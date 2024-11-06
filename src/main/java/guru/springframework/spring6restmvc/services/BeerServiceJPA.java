@@ -7,14 +7,16 @@ import guru.springframework.spring6restmvc.model.BeerStyle;
 import guru.springframework.spring6restmvc.repositories.BeerRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Primary;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.stream.Collectors;
 
 /**
  * Created by jt, Spring Framework Guru.
@@ -24,41 +26,90 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class BeerServiceJPA implements BeerService {
     private final BeerRepository beerRepository;
+
     private final BeerMapper beerMapper;
 
+    private static final int DEFAULT_PAGE_NUMBER = 0;
+
+    private static final int DEFAULT_PAGE_SIZE = 25;
+
+    private static final int MAX_PAGE_SIZE = 1000;
+
+    private static final String DEFAULT_SORT_COLUMN = "beerName";
+
+    private static final Sort.Direction DEFAULT_SORT_DIRECTION = Sort.Direction.ASC;
+
     @Override
-    public List<BeerDTO> listBeers(String beerName, BeerStyle beerStyle, Boolean inventory, Integer pageNumber, Integer pageSize) {
-        List<Beer> beerList;
+    public Page<BeerDTO> listBeers(String beerName, BeerStyle beerStyle, Boolean inventory, Integer pageNumber, Integer pageSize, String sortColumn, String sortDirection) {
+        PageRequest pageRequest = buildPageRequest(pageNumber, pageSize, sortColumn, sortDirection);
+
+        Page<Beer> beerList;
 
         if (StringUtils.hasText(beerName)) {
-            beerList = listBeersByName(beerName);
+            beerList = listBeersByName(beerName, pageRequest);
 
         } else if (!StringUtils.hasText(beerName) && beerStyle != null) {
-            beerList = listBeersByStyle(beerStyle);
+            beerList = listBeersByStyle(beerStyle, pageRequest);
         } else if (StringUtils.hasText(beerName) && beerStyle != null) {
-            beerList = listBeersByNameAndStyle(beerName, beerStyle);
+            beerList = listBeersByNameAndStyle(beerName, beerStyle, pageRequest);
         } else {
-            beerList = beerRepository.findAll();
+            beerList = beerRepository.findAll(pageRequest);
         }
 
         if (inventory != null && inventory) {
             beerList.forEach(beer -> beer.setQuantityOnHand(null));
         }
 
-        return beerList.stream().map(beerMapper::beerToBeerDto)
-                .collect(Collectors.toList());
+        return beerList.map(beerMapper::beerToBeerDto);
+//        return beerList.stream().map(beerMapper::beerToBeerDto)
+//                .collect(Collectors.toList());
     }
 
-    List<Beer> listBeersByNameAndStyle(String beerName, BeerStyle beerStyle) {
-        return beerRepository.findAllByBeerNameIsLikeIgnoreCaseAndBeerStyle("%" + beerName + "%", beerStyle);
+    public PageRequest buildPageRequest(Integer pageNumber, Integer pageSize, String sortColumn, String sortDirection) {
+        int queryPageNumber;
+        int queryPageSize;
+        String sortByColumn = DEFAULT_SORT_COLUMN;
+        Sort.Direction sortInDirection = DEFAULT_SORT_DIRECTION;
+
+        if (pageNumber != null && pageNumber > DEFAULT_PAGE_NUMBER) {
+            queryPageNumber = pageNumber - 1;
+        } else {
+            queryPageNumber = DEFAULT_PAGE_NUMBER;
+        }
+
+        if (pageSize == null) {
+            queryPageSize = DEFAULT_PAGE_SIZE;
+        } else {
+            if (pageSize > MAX_PAGE_SIZE) {
+                queryPageSize = MAX_PAGE_SIZE;
+            } else {
+                queryPageSize = pageSize;
+            }
+        }
+
+        if (StringUtils.hasText(sortColumn)) {
+            sortByColumn = sortColumn;
+        }
+
+        if (StringUtils.hasText(sortDirection)) {
+            sortInDirection = Sort.Direction.valueOf(sortDirection.toUpperCase());
+        }
+
+        Sort sort = Sort.by(sortInDirection, sortByColumn);
+
+        return PageRequest.of(queryPageNumber, queryPageSize, sort);
     }
 
-    List<Beer> listBeersByStyle(BeerStyle beerStyle) {
-        return beerRepository.findAllByBeerStyle(beerStyle);
+    private Page<Beer> listBeersByNameAndStyle(String beerName, BeerStyle beerStyle, Pageable pageable) {
+        return beerRepository.findAllByBeerNameIsLikeIgnoreCaseAndBeerStyle("%" + beerName + "%", beerStyle, pageable);
     }
 
-    List<Beer> listBeersByName(String beerName) {
-        return beerRepository.findAllByBeerNameIsLikeIgnoreCase("%" + beerName + "%");
+    private Page<Beer> listBeersByStyle(BeerStyle beerStyle, Pageable pageable) {
+        return beerRepository.findAllByBeerStyle(beerStyle, pageable);
+    }
+
+    private Page<Beer> listBeersByName(String beerName, Pageable pageable) {
+        return beerRepository.findAllByBeerNameIsLikeIgnoreCase("%" + beerName + "%", pageable);
     }
 
     @Override

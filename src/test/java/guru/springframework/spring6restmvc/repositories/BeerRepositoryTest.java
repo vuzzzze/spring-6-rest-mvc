@@ -53,7 +53,7 @@ class BeerRepositoryTest {
     @ParameterizedTest
     @ValueSource(strings = {"IPA"})
     void testFindBeerByNameIgnoreCase(String beerName) {
-        List<Beer> beerList = beerRepository.findAllByBeerNameIsLikeIgnoreCase("%" + beerName + "%");
+        List<Beer> beerList = beerRepository.findAllByBeerNameIsLikeIgnoreCase("%" + beerName + "%", null);
 
         assertThat(beerList.size()).isEqualTo(336);
     }
